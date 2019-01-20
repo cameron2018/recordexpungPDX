@@ -12,15 +12,19 @@ def date2obj(input_date):
         a datetime object
     """
 
-    if type(input_date) == datetime.date: #if this is already a datetime object then do nothing.
-        return input_date
-    else:
+    try:
+        if type(input_date) == datetime.date: #if this is already a datetime object then do nothing.
+            return input_date
+        else:
 
-        #parse the date
-        month, day, year = map(int, input_date.split("/"))
-        date_obj = datetime.date(year, month, day)
+            #parse the date
+            month, day, year = map(int, input_date.split("/"))
+            date_obj = datetime.date(year, month, day)
 
-        return date_obj
+            return date_obj
+    except:
+        return None
+
 
 def file2string(location):
     """this is only used when loading locally stored html files"""
