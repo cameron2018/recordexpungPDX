@@ -1,6 +1,8 @@
 import requests
 
-from expungeservice.crawler.models.charge import Charge
+from objbrowser import browse
+
+from expungeservice.models.charge import Charge
 from expungeservice.crawler.parsers.param_parser import ParamParser
 from expungeservice.crawler.parsers.node_parser import NodeParser
 from expungeservice.crawler.parsers.record_parser import RecordParser
@@ -35,7 +37,10 @@ class Crawler:
         for case in self.result.cases:
             case_parser = self.__parse_case(case)
             for charge_id, charge in case_parser.hashed_charge_data.items():
+                print(charge)
                 new_charge = Crawler.__build_charge(charge_id, charge, case_parser)
+
+                #browse(new_charge)
                 case.charges.append(new_charge)
 
         self.session.close()
@@ -57,7 +62,7 @@ class Crawler:
         param_parser = ParamParser()
         param_parser.feed(node_response.text)
         return Payload.payload(param_parser, last_name, first_name, middle_name, birth_date)
-
+ 
     @staticmethod
     def __login_validation(response, login_url):
         return response.url != login_url

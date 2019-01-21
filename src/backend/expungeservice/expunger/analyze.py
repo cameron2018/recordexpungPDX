@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+from objbrowser import browse
+
 import logging
 logging.basicConfig(level=logging.INFO)
 
@@ -7,7 +9,7 @@ from expungeservice.models.statute import Statute
 from expungeservice.models.case import *
 from expungeservice.models.charge import *
 
-from expungeservice.models.disposition import DispositionType, Disposition
+from expungeservice.models.disposition import Ruling, Disposition
 
 from expungeservice.expunger.ineligible_crimes_list import *
 
@@ -95,12 +97,12 @@ class RecordAnalyzer(object):
         self.client = client
         self.analyze()
 
-    # def _is_charge_level(charge, type_, class_):
-    #     check = 'Is the charge a {}'.format(type_)
+    # def _is_charge_level(charge, Ruling, class_):
+    #     check = 'Is the charge a {}'.format(Ruling)
     #     if class_:
     #         check += ' class {}'.format(class_)
     #
-    #     result = (charge.level.type_ ==  type_ and
+    #     result = (charge.level.Ruling ==  Ruling and
     #               (not class_ or charge.level.class_ == class_))
     #
     #     return CheckResult(check=check, result=result)
@@ -118,7 +120,7 @@ class RecordAnalyzer(object):
         for case in self.client.cases:
             for charge in case.charges:
 
-                if charge.disposition.type_ == what_type:
+                if charge.disposition.ruling == what_type:
                     chargelist.append(charge)
 
         sorted_list = sorted(chargelist, key=attrgetter(
@@ -126,7 +128,7 @@ class RecordAnalyzer(object):
         return sorted_list
 
     def get_mrc(self):
-        return RecordAnalyzer.get_all_charges_sorted_by_date(self, DispositionType.CONVICTED)[-1:][0]
+        return RecordAnalyzer.get_all_charges_sorted_by_date(self, Ruling.CONVICTED)[-1:][0]
 
     def is_charge_from_last_3_years(self, charge): #todo: leap year bug
         three_years_ago_from_today = datetime.today().date() - timedelta(days=(365 * 3))  # calculate time delta for twenty years ago
@@ -137,7 +139,7 @@ class RecordAnalyzer(object):
     def get_last_ten_years_of_convictions_minus_mrc(self, mrc):
 
         ten_years_ago_from_today = datetime.today() - timedelta(days=(365 * 10))  #todo: leap year bug
-        sorted_list = RecordAnalyzer.get_all_charges_sorted_by_date(self, DispositionType.CONVICTED)
+        sorted_list = RecordAnalyzer.get_all_charges_sorted_by_date(self, Ruling.CONVICTED)
 
         last_ten_years_of_convictions_minus_mrc = []
 
@@ -186,7 +188,7 @@ class RecordAnalyzer(object):
     def does_record_contain_conviction_from_last_ten_years(self):
         for case in self.client.cases:
             for charge in case.charges:
-                if charge.disposition.type_ == DispositionType.CONVICTED:
+                if charge.disposition.ruling == Ruling.CONVICTED:
 
                     #todo: leapyear bug
 
@@ -242,7 +244,7 @@ class RecordAnalyzer(object):
 
             #time dismissal tree
 
-            dismissed_charges_sorted = self.get_all_charges_sorted_by_date(DispositionType.DISMISSED)
+            dismissed_charges_sorted = self.get_all_charges_sorted_by_date(Ruling.DISMISSED)
 
             if len(dismissed_charges_sorted) == 0:
                 logging.info('client has no dismissed charges')
@@ -291,15 +293,15 @@ class RecordAnalyzer(object):
                 res = self.type_eligibility(charge)
 
 
-                charge.type_eligible = res
+                charge.Rulingeligible = res
 
-                if charge.type_eligible.code == ResultCode.INELIGIBLE:
+                if charge.Rulingeligible.code == ResultCode.INELIGIBLE:
                     charge.eligible_when = "never" #logging.info("failed Type Eligibility tree: " + charge.name + " " + result.analysis)
 
 
                 try:
                     #if charge has passed type and time eligibility checks
-                    if charge.type_eligible.code == ResultCode.ELIGIBLE and charge.time_eligible.code == ResultCode.ELIGIBLE:
+                    if charge.Rulingeligible.code == ResultCode.ELIGIBLE and charge.time_eligible.code == ResultCode.ELIGIBLE:
                         charge.eligible_now = True
                     else:
                         charge.eligible_now = False
@@ -421,13 +423,13 @@ class RecordAnalyzer(object):
     def does_record_contain_arrest_or_conviction_in_last_20_years(client):
         for case in client.cases:
             for charge in case.charges:
-                if charge.disposition.type_ == DispositionType.CONVICTED:
+                if charge.disposition.ruling == Ruling.CONVICTED:
                     twenty_years_ago_date = datetime.today() - timedelta(days=(365*20)) #calculate time delta for twenty years ago #todo: calculate if this is accurate to within +-1 days
                     try:
                         if twenty_years_ago_date.date() < charge.disposition.date:
                             return True
                     except:
-                        logging.info('does_record_contain_arrest_or_conviction_in_last_20_years got a blank charge.disposition.type_from ' + str(charge.name))
+                        logging.info('does_record_contain_arrest_or_conviction_in_last_20_years got a blank charge.disposition.rulingfrom ' + str(charge.name))
 
         return False
 
@@ -439,12 +441,12 @@ class RecordAnalyzer(object):
         return False
 
     def is_charge_dismissal_or_aquittal(charge):
-        if charge.disposition.type_== "DISMISSED" or charge.disposition.type_== "AQUITTED": #todo: i dont know if "AQUITTED" is a valid type
+        if charge.disposition.ruling== "DISMISSED" or charge.disposition.ruling== "AQUITTED": #todo: i dont know if "AQUITTED" is a valid type
             return True
         return False
 
     def is_charge_no_complaint(charge):
-        if charge.disposition.type_== "NO COMPLAINT": #todo: not sure if "NO COMPLAINT" is a valid type or if its even in this object
+        if charge.disposition.ruling== "NO COMPLAINT": #todo: not sure if "NO COMPLAINT" is a valid type or if its even in this object
             return True
         return False
 

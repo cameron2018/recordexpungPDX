@@ -90,7 +90,3 @@ def BuildClientObject(PathToExampleHTMLFiles, clientsRecordPageHTML):
 
     return Client(ClientName, ClientDOB, updatedCaseList)
 
-
-
-
-

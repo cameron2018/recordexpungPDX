@@ -5,9 +5,11 @@ import unittest
 
 from expungeservice.expunger.analyze import *
 from expungeservice.expunger.client_builder import *
-from expungeservice.models.disposition import DispositionType
+from expungeservice.models.disposition import Ruling
 
 import datetime
+
+from objbrowser import browse
 
 
 # def test_statute():
@@ -38,11 +40,11 @@ import datetime
 # get disposition helper function
 def get_disp():
     date = datetime.date(1996, 1, 1)
-    disp_type = DispositionType.NO_CONVICTION
+    disp_type = Ruling.NO_CONVICTION
     return Disposition(disp_type, date)
 
 def get_convicted_disp():
-    return Disposition(DispositionType.CONVICTED, datetime.date(1996, 1, 1))
+    return Disposition(Ruling.CONVICTED, datetime.date(1996, 1, 1))
 
 def get_dummy_statute():
     return Statute(113, 45, 5, 'd')
@@ -132,7 +134,7 @@ class TestExpunger(unittest.TestCase):
 
         assert(result.code == ResultCode.INELIGIBLE)
 
-        #assert(result.statute == self.statute_137_225_5)
+        #assert(result.statute == self.statute_137_225_5) #todo: fix this
 
     def test_time_elig_open_case(self):
 

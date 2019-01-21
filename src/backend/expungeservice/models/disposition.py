@@ -2,7 +2,7 @@ import enum
 import datetime
 
 
-DispositionType = enum.Enum('Disposition',
+Ruling = enum.Enum('Disposition',
                             ' '.join([
                                 'CONVICTED',
                                 'NO_CONVICTION',
@@ -15,11 +15,11 @@ class Disposition(object):
     """ Disposition for a charge.
 
     Attributes:
-        type_: An enum of type DispositionType.
+        ruling: An enum of type Ruling.
         date: A datetime.date specifying the date of the disposition.
     """
-    def __init__(self, type_, date_string=None, date=None):
-        self.type_ = type_
+    def __init__(self, ruling=None, date_string=None, date=None):
+        self.ruling = ruling
         self.date = date
         self.date_string = date_string
 
@@ -27,14 +27,14 @@ class Disposition(object):
         self.parse_type()
 
     def parse_type(self):
-        if self.type_ == "CONVICTED":
-            self.type_ = DispositionType.CONVICTED
-        elif self.type_ == "DISMISSED":
-            self.type_ = DispositionType.DISMISSED #todo: this function isnt parsing correctly
-        elif self.type_ == "ACQUITTED":
-            self.type_ = DispositionType.ACQUITTED
-        elif self.type_ == "NO COMPLAINT":
-            self.type_ = DispositionType.NO_COMPLAINT
+        if self.ruling == "CONVICTED":
+            self.ruling = Ruling.CONVICTED
+        elif self.ruling == "DISMISSED":
+            self.ruling = Ruling.DISMISSED #todo: this function isnt parsing correctly
+        elif self.ruling == "ACQUITTED":
+            self.ruling = Ruling.ACQUITTED
+        elif self.ruling == "NO COMPLAINT":
+            self.ruling = Ruling.NO_COMPLAINT
             #todo: throw error
 
     def parse_date_string(self):
@@ -44,7 +44,7 @@ class Disposition(object):
             self.date = datetime.date(year, month, day)
 
     # def __dict__(self):
-    #     return {'type': str(self.type_),
+    #     return {'type': str(self.ruling),
     #             'date_string': str(self.date_string)
     #             }
 

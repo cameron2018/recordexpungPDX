@@ -1,4 +1,8 @@
 from expungeservice.expunger.helper_functions import *
+from expungeservice.models.disposition import Disposition
+from expungeservice.models.crime_level import CrimeLevel
+
+
 
 
 class Charge(object):
@@ -15,16 +19,15 @@ class Charge(object):
             name,
             statute = None, #this comes from the detail page
             level = None,
-            charge_date = None,
-            disposition = None,
+            date = None,
+            disposition = Disposition(),
             analysis=None):
 
         self.name = name
         self.statute = statute
         self.level = level
-        self.charge_date = charge_date
+        self.date = date
         self.disposition = disposition
-        self._result = None
 
         self.type_eligible = None  # this is going to be a bool that represents if this is expungable
         self.time_eligible = None
@@ -34,8 +37,11 @@ class Charge(object):
         self.analysis = analysis
 
         # parse date into proper datetime object, if it is a string #todo: remove this
-        if type(self.charge_date) == type(""):
-            self.charge_date = date2obj(self.charge_date)
+        # if type(self.date) == type(""):
+        #     self.date = date2obj(self.date)
+
+        if type(self.level) == str:
+            self.level = CrimeLevel(self.level)
 
     # def __dict__(self):
     #
@@ -43,7 +49,7 @@ class Charge(object):
     #         return {'name': self.name,
     #                 'statute': self.statute.__dict__(),
     #                 'level': self.level.__dict__(),
-    #                 'charge_date': str(self.charge_date),
+    #                 'date': str(self.date),
     #                 'disposition': self.disposition.__dict__(),
     #                 'type_eligible': self.type_eligible,
     #                 'time_eligible': self.time_eligible,
@@ -55,7 +61,7 @@ class Charge(object):
     #     return {'name': self.name,
     #             'statute': self.statute.__dict__(),
     #             'level': self.level.__dict__(),
-    #             'charge_date': str(self.charge_date),
+    #             'date': str(self.date),
     #             'disposition': self.disposition.__dict__(),
     #             'type_eligible': self.type_eligible.__dict__(),
     #             'time_eligible': self.time_eligible.__dict__(),
@@ -68,7 +74,7 @@ class Charge(object):
         return (self.name == other.name and
                 self.statute == other.statute and
                 self.level == other.level and
-                self.charge_date == other.charge_date and
+                self.date == other.date and
                 self.disposition == other.disposition)
 
     # @property
