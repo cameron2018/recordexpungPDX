@@ -1,154 +1,25 @@
 #!/usr/bin/env python3
 
+import logging
+logging.basicConfig(level=logging.INFO)
+
+from expungeservice.models.statute import Statute
+from expungeservice.models.case import *
+from expungeservice.models.charge import *
+
+from expungeservice.models.disposition import DispositionType, Disposition
+
+from expungeservice.expunger.ineligible_crimes_list import *
+
+from operator import attrgetter
+
+from datetime import datetime
+from datetime import timedelta
+
+
+
 import collections
 import enum
-
-# TODO we may need to change this to Enum since only a few valid values are allowed.
-class CrimeLevel(object):
-    """ Crime Level.
-
-    Describes crime level. e.g. Felony Class A.
-
-    Attributes:
-        type_: A string describing the type of crime.
-        class_: A string of length 1 specifying the class.
-    """
-    def __init__(self, type_, class_=None):
-        self.type_ = type_
-        self.class_ = class_
-
-    def __str__(self):
-        if class_:
-            return '{} Class {}'.format(self.type_, self.class_)
-        else:
-            return self.type_
-
-DispositionType = enum.Enum('DispositionType',
-                            ' '.join([
-                                'CONVICTED',
-                                'PROBATION_REVOKED',
-                                'DISMISSED',
-                                'ACQUITTED',
-                                'NO_COMPLAINT'
-                                ]))
-
-class Disposition(object):
-    """ Disposition for a charge.
-
-    Attributes:
-        type_: An enum of type DispositionType.
-        date: A datetime.date specifying the date of the disposition.
-    """
-    def __init__(self, type_, date):
-        self.type_ = type_
-        self.date = date
-
-class Statute(object):
-    """ Statute corresponding to a law
-
-    Statutes are represented by numbers in hierarchical manner:
-    chapter.subchapter(section)(subsection) e.g. 653.412(5)(c)
-
-    Attributes:
-        chapter: An integer that specifies statute chapter.
-        subchapter: An integer that specifies statute sub-chapter.
-        section: An integer that specifies the section within sub-chapter.
-        subsection: A string of length 1 that specifies the sub-section within
-                    section.
-    """
-    def __init__(self, chapter, subchapter, section=None, subsection=None):
-        self.chapter = chapter
-        self.subchapter = subchapter
-        self.section = section
-        self.subsection = subsection
-        # TODO we may need to add components beyond subsection
-
-    def __eq__(self, other):
-        return (self.chapter == other.chapter and
-                self.subchapter == other.subchapter and
-                ((not self.section and not other.section) or
-                 self.section == other.section) and
-                ((not self.subsection and not other.subsection) or
-                 self.subsection == other.subsection))
-
-    def __str__(self):
-        # TODO do these need to have leading zeros?
-        statute = '{}'.format(self.chapter)
-        if self.subchapter:
-            statute = '{}.{:03d}'.format(statute, self.subchapter)
-        if self.section:
-            statute = '{}({})'.format(statute, self.section)
-        if self.subsection:
-            statute = '{}({})'.format(statute, self.subsection)
-        return statute
-
-class Charge(object):
-    """ Charge filed on a Client.
-
-    Attributes:
-        name: A string describing the charge.
-        statute: A Statute object that applies for the charge.
-        date: A datetime.date object specifying the date of the charge.
-        disposition: A Disposition object for the charge.
-    """
-    def __init__(
-            self,
-            name,
-            statute,
-            level,
-            date,
-            disposition):
-        self.name = name
-        self.statute = statute
-        self.level = level
-        self.date = date
-        self.disposition = disposition
-        self._result = None
-
-    @property
-    def type_elig_result(self):
-        return self._result
-
-    @type_elig_result.setter
-    def type_elig_result(self, result):
-        self._result = result
-
-CaseState = enum.Enum('CaseState', 'OPEN CLOSED')
-
-class Case(object):
-    """ Case associated with a Client.
-
-    Attributes:
-        charges: A list of Charge(s).
-        state: A CaseState enum.
-        balance_due: A float that tells how much money is owed to the court.
-    """
-    def __init__(self, charges, state, balance_due=0.0):
-        self.charges = charges
-        self.state = state
-        self.balance_due = balance_due
-
-    def num_charges(self):
-        return len(self.charges)
-
-class Client(object):
-    """ Client - An individual who wants to expunge charges from their record.
-
-    Attributes:
-        name: A string that specifies client's name.
-        dob: A datetime.date that specifies date of birth.
-        cases: A list of Case(s).
-    """
-    def __init__(self, name, dob, cases):
-        self.name = name
-        self.dob = dob
-        self.cases = cases
-
-    def num_charges(self):
-        num = 0
-        for case in self.cases:
-            num += case.num_charges()
-        return num
 
 class ResultCode(enum.Enum):
     INELIGIBLE = 'Ineligible'
@@ -189,10 +60,28 @@ class Result(object):
     def __str__(self):
         return ' '.join([str(self.code), str(self.analysis), str(self.statute), str(self.date)])
 
-class ResultInElig_137_225_5(Result):
-    def __init__(self, **kwargs):
-        Result.__init__(self, code=ResultCode.INELIGIBLE,
-                        statute=Statute(137, 225, 5), **kwargs)
+    # def __dict__(self):
+    #     return {'code': str(self.code) ,
+    #             'analysis': self.analysis,
+    #             'statute': str(self.statute),
+    #             'date': str(self.date)
+    #             }
+
+# class ResultInElig_137_225_5(Result):
+#
+#     """
+#     137.225(5) mandates the following
+#
+#     class A felony
+#     sex crime from list A
+#     traffic crimes
+#
+#     are not expunged
+#     """
+#
+#     def __init__(self, **kwargs):
+#         Result.__init__(self, code=ResultCode.INELIGIBLE,
+#                         statute=Statute(137, 225, 5), **kwargs)
 
 class RecordAnalyzer(object):
     """
@@ -204,42 +93,124 @@ class RecordAnalyzer(object):
 
     def __init__(self, client):
         self.client = client
+        self.analyze()
 
-    def _is_charge_level(charge, type_, class_):
-        check = 'Is the charge a {}'.format(type_)
-        if class_:
-            check += ' class {}'.format(class_)
+    # def _is_charge_level(charge, type_, class_):
+    #     check = 'Is the charge a {}'.format(type_)
+    #     if class_:
+    #         check += ' class {}'.format(class_)
+    #
+    #     result = (charge.level.type_ ==  type_ and
+    #               (not class_ or charge.level.class_ == class_))
+    #
+    #     return CheckResult(check=check, result=result)
 
-        result = (charge.level.type_ ==  type_ and
-                  (not class_ or charge.level.class_ == class_))
-        return CheckResult(check=check, result=result)
+    # def _is_charge_statute(charge, statute):
+    #     check = 'Does the charge fall under statute: ' + str(statute)
+    #     return CheckResult(check=check, result=charge.statute == statute)
 
-    def _is_charge_statute(charge, statute):
-        check = 'Does the charge fall under statute: ' + str(statute)
-        return CheckResult(check=check, result=charge.statute == statute)
+    #todo: there is LOTS of duplication between the next three functions and everywhere cameron has been coding
+    #todo: maybe instead of searching for equivalent charge objects we should just refer to the original charge object's memory address or whatever that thing is like <expungeservice.models.charge.Charge object at 0x7f1c637d9b38>
 
-    def _is_charge_in_statute_list(charge, statutes, desc):
-        check = ('Does the charge fall under any of these statutes: ' +
-                 ','.join(str(statute) for statute in statutes))
-        # TODO implement this
-        return CheckResult(check=check, result=False, check_desc=desc)
+    def get_all_charges_sorted_by_date(self, what_type):
+        chargelist = []
 
-    def _is_charge_sex_crime(charge):
-        # TODO update
-        _statutes_sex_crimes = []
-        return RecordAnalyzer._is_charge_in_statute_list(
-            charge, _statutes_sex_crimes, 'Is the charge a sex crime')
+        for case in self.client.cases:
+            for charge in case.charges:
 
-    def _is_charge_traffic_crime(charge):
-        # TODO update
-        _statutes_traffic_crimes = []
-        return RecordAnalyzer._is_charge_in_statute_list(
-            charge, _statutes_traffic_crimes, 'Is the charge a traffic crime')
+                if charge.disposition.type_ == what_type:
+                    chargelist.append(charge)
 
-    def _have_open_case(self):
-        check = 'Is there a open case for the client'
+        sorted_list = sorted(chargelist, key=attrgetter(
+            'disposition.date'))  # sort list of convictions by date, note: the list is mostly sorted by the parser but not completely sorted so this is in fact necessary
+        return sorted_list
+
+    def get_mrc(self):
+        return RecordAnalyzer.get_all_charges_sorted_by_date(self, DispositionType.CONVICTED)[-1:][0]
+
+    def is_charge_from_last_3_years(self, charge): #todo: leap year bug
+        three_years_ago_from_today = datetime.today().date() - timedelta(days=(365 * 3))  # calculate time delta for twenty years ago
+
+        if charge.disposition.date > three_years_ago_from_today:
+            return True
+
+    def get_last_ten_years_of_convictions_minus_mrc(self, mrc):
+
+        ten_years_ago_from_today = datetime.today() - timedelta(days=(365 * 10))  #todo: leap year bug
+        sorted_list = RecordAnalyzer.get_all_charges_sorted_by_date(self, DispositionType.CONVICTED)
+
+        last_ten_years_of_convictions_minus_mrc = []
+
+        for charge in sorted_list:
+            if charge != mrc:
+                if charge.disposition.date > ten_years_ago_from_today.date(): #todo: is this right?
+                    last_ten_years_of_convictions_minus_mrc.append(charge)
+
+        return last_ten_years_of_convictions_minus_mrc
+
+    def is_mrc_time_eligible(self, mrc):
+
+        any_other_convictions_from_last_ten_years = RecordAnalyzer.get_last_ten_years_of_convictions_minus_mrc(self, mrc)
+
+        if len(any_other_convictions_from_last_ten_years) > 0:
+            ten_years_from_disposition = mrc.disposition.date + timedelta(days=(365 * 10))
+            mrc.eligible_when = ten_years_from_disposition #todo: leap year bug
+            return False, Result(ResultCode.INELIGIBLE, "This is MRC. it is Time Eligible beginning at " + str(ten_years_from_disposition), None)
+        else:
+            if RecordAnalyzer.is_charge_from_last_3_years(self, mrc): #todo: leap year bug
+                return True, Result(ResultCode.ELIGIBLE, "This is MRC. it is Time Eligible", None)
+            else:
+                three_years_from_disposition = mrc.disposition.date + timedelta(days=(365 * 3))
+                mrc.eligible_when = three_years_from_disposition #todo: leap year bug
+                return True, Result(ResultCode.INELIGIBLE, "This is MRC. it is Time Eligible beginning at " + str(three_years_from_disposition), None)
+
+    def is_charge_time_eligible(self, charge, mrc):
+
+        # calculate ten years from MRC #todo: leapyear bug
+        ten_years_from_mrc = mrc.disposition.date + timedelta(days=(365 * 10))  # calculate time delta for twenty years ago
+
+        if datetime.today().date() > ten_years_from_mrc:
+            charge.time_eligible = Result(ResultCode.ELIGIBLE, "Time eligible since " + str(ten_years_from_mrc), None)
+            charge.eligible_when = ten_years_from_mrc
+
+        if datetime.today().date() < ten_years_from_mrc:
+            charge.time_eligible = Result(ResultCode.ELIGIBLE, "Ineligible under 137.225(7)(b). Time Eligiblity begins " + str(ten_years_from_mrc), None)
+            charge.eligible_when = ten_years_from_mrc
+
+    def set_all_other_charges_to_ineligible_until(self, mrc):
+        for case in self.client.cases:
+            for charge in case.charges:
+                if charge != mrc:
+                    RecordAnalyzer.is_charge_time_eligible(self, charge, mrc) #this function sets the appropriate properties automatically
+
+    def does_record_contain_conviction_from_last_ten_years(self):
+        for case in self.client.cases:
+            for charge in case.charges:
+                if charge.disposition.type_ == DispositionType.CONVICTED:
+
+                    #todo: leapyear bug
+
+                    ten_years_ago = datetime.today() - timedelta(days=(365*10)) #calculate time delta for twenty years ago
+
+                    if ten_years_ago.date() < charge.disposition.date:
+                        return True
+
+        return False
+
+    def any_open_cases(self):
         result = any([case.state == CaseState.OPEN for case in self.client.cases])
-        return CheckResult(check=check, result=result)
+
+        if result:
+            return True, Result(ResultCode.OPEN_CASE, result)
+        else:
+            return False, None
+
+    #todo: replace above with below
+
+    # def _have_open_case(self):
+    #     check = 'Is there a open case for the client'
+    #     result = any([case.state == CaseState.OPEN for case in self.client.cases])
+    #     return CheckResult(check=check, result=result)
 
     """
     Run Time Eligibility analysis on the client and their records
@@ -251,43 +222,41 @@ class RecordAnalyzer(object):
         An Result instance
     """
     def time_eligibility(self):
-        analysis = []
 
-        analysis.append(self._have_open_case())
-        if analysis[-1].result:
-            return Result(ResultCode.OPEN_CASE, analysis)
+        #check for any open cases
+        open_cases = self.any_open_cases()
+        if open_cases[0]:
 
-        # TODO implement the rest
+            return open_cases[1]
 
-        return Result(ResultCode.NO_ACTION)
+        #check for any charges in last ten years
+        if self.does_record_contain_conviction_from_last_ten_years():
 
-    """
-    Run Type Eligibility analysis on a charge
+            mrc = RecordAnalyzer.get_mrc(self)
 
-    Args:
-        charge: A Charge instance
+            self.set_all_other_charges_to_ineligible_until(mrc)
 
-    Returns:
-        A Result instance
-    """
-    def type_eligibility(self, charge):
-        analysis = []
+            return self.is_mrc_time_eligible(mrc)[1] #todo: hmm this is kinda spaghetti code
 
-        analysis.append(RecordAnalyzer._is_charge_level(charge, 'Felony', 'A'))
-        if analysis[-1].result:
-            return ResultInElig_137_225_5(analysis=analysis)
+        else:
 
-        analysis.append(RecordAnalyzer._is_charge_sex_crime(charge))
-        if analysis[-1].result:
-            return ResultInElig_137_225_5(analysis=analysis)
+            #time dismissal tree
 
-        analysis.append(RecordAnalyzer._is_charge_traffic_crime(charge))
-        if analysis[-1].result:
-            return ResultInElig_137_225_5(analysis=analysis)
+            dismissed_charges_sorted = self.get_all_charges_sorted_by_date(DispositionType.DISMISSED)
 
-        # TODO add remaining analysis
+            if len(dismissed_charges_sorted) == 0:
+                logging.info('client has no dismissed charges')
+                return Result(ResultCode.NO_ACTION)
 
-        return Result(ResultCode.FURTHER_ANALYSIS, analysis)
+            mrd = dismissed_charges_sorted[-1:][0]
+
+
+            if self.is_charge_from_last_3_years(mrd):
+
+                #earlier no convictions are blocked from latest no conviction still on record
+                return Result(ResultCode.ELIGIBLE, "recommend sequential expungement of arrests")
+            else:
+                return Result(ResultCode.NO_ACTION)
 
     """
     Analyze which records are expungeable
@@ -299,9 +268,282 @@ class RecordAnalyzer(object):
         A tuple consisting of:
             - A Result instance that describes the Time Eligibility analysis.
     """
-    def analyze(self):
-        for case in self.client.cases:
-            for charge in case.charges:
-                charge.type_elig_result = self.type_eligibility(charge)
 
-        return self.time_eligibility()
+    def analyze(self): #todo: conform to the comment above
+
+        #this checks time eligibility for all charges on all cases
+
+        time_result = self.time_eligibility()
+
+        #this checks TYPE eligibility for all charges
+        for case in self.client.cases: #iterate through all cases and charges to check type eligibility
+
+            for charge in case.charges:
+
+                # #todo: move this to its own function since it is basically the
+                #           type eligibilty function and time eligibility has its own function
+
+                if charge.statute.chapter == None: #todo: throw errror
+                    logging.warning(charge.name)
+                    logging.warning("error")
+
+
+                res = self.type_eligibility(charge)
+
+
+                charge.type_eligible = res
+
+                if charge.type_eligible.code == ResultCode.INELIGIBLE:
+                    charge.eligible_when = "never" #logging.info("failed Type Eligibility tree: " + charge.name + " " + result.analysis)
+
+
+                try:
+                    #if charge has passed type and time eligibility checks
+                    if charge.type_eligible.code == ResultCode.ELIGIBLE and charge.time_eligible.code == ResultCode.ELIGIBLE:
+                        charge.eligible_now = True
+                    else:
+                        charge.eligible_now = False
+                except:
+
+                    logging.info(charge) #todo: error
+
+    """
+    these are helper functions for type eligiblilty
+    """
+    def is_crime_list_B(charge):
+
+        for item in CrimesListB:
+            if item == charge.statute:
+                return True
+
+        return False
+
+    def is_crime_list_A(charge):
+        try:
+            for item in CrimesListA:
+
+                if len(item) == 2 and isinstance(item, list):  # if this is a range of values
+
+                    lower_chapter = int(item[0][0:3])
+                    lower_subchapter = int(item[0][4:7])
+
+                    upper_chapter = int(item[1][0:3])
+                    upper_subchapter = int(item[1][4:7])
+
+                    if int(charge.statute.chapter) <= upper_chapter and int(charge.statute.chapter) >= lower_chapter:
+                        if int(charge.statute.subchapter) <= upper_subchapter and int(charge.statute.subchapter) >= lower_subchapter:
+
+                            logging.info(charge.statute.__str__() + " is on list A")
+                            return True  # return false and the reason why its false
+            return False
+
+        except:
+            logging.warning("Error searching list A for statute: " + str(charge.statute.chapter) + "." + str(charge.statute.subchapter))
+
+
+    def is_crime_driving_crime(charge):
+
+        for item in DrivingCrimes:
+            if len(item) == 2 and isinstance(object, (list,)):  # if this is a range of values
+
+                lower_chapter = item[0][0:3]
+                lower_subchapter = item[0][4:7]
+
+                upper_chapter = item[1][0:3]
+                upper_subchapter = item[1][4:7]
+
+                if charge.statute.chapter <= upper_chapter and charge.statute.chapter >= lower_chapter:
+                    if charge.statute.subchapter <= upper_subchapter and charge.statute.subchapter >= lower_subchapter:
+
+                        #print(charge.statute.__str__() + " is NOT on list A")
+                        return True  # return false and the reason why its false
+        return False
+
+    def is_crime_marijuana_list(charge):    #todo: this function needs repair
+        for item in MarijuanaIneligible:
+            if item == charge.statute:
+                return True
+        return False
+
+    def is_charge_PCS_schedule_1(charge):
+        if charge.name.upper() == "PCS":            #todo: this is broken, find how to identify this charge
+            return True
+
+    def is_charge_traffic_violation(charge):
+
+        if charge.statute.chapter == None:   #todo: throw error
+            return False
+
+        if int(charge.statute.chapter) <= 900 and int(charge.statute.chapter) >= 800:
+            return True
+        return False
+
+    def is_charge_level_violation( charge):
+        try:
+            if charge.level.type_.upper() == "VIOLATION": #todo: if this is a violation wtf is infraction
+                return True
+            return False
+        except:
+            print(charge.level.__dict__)
+
+    def is_charge_misdemeanor( charge):
+        try:
+            if charge.level.type_.upper() == "MISDEMEANOR":
+                return True
+            return False
+        except:
+            print(charge.level.__dict__)
+
+    def is_charge_felony_class_C( charge):
+        try:
+            if charge.level.type_.upper() == "FELONY" and charge.level.class_.upper() == "C":
+                return True
+            return False
+        except:
+            print(charge.level.__dict__)
+
+    def is_charge_felony_class_B(charge):
+        try:
+            if charge.level.type_.upper() == "FELONY" and charge.level.class_.upper() == "B":
+                return True
+            return False
+        except:
+            print(charge.level.__dict__)
+
+    def is_charge_felony_class_A(charge):
+        try:
+            if charge.level.type_.upper() == "FELONY" and charge.level.class_.upper() == "A":
+                return True
+            return False
+        except:
+            print(charge.level.__dict__)
+
+    def does_record_contain_arrest_or_conviction_in_last_20_years(client):
+        for case in client.cases:
+            for charge in case.charges:
+                if charge.disposition.type_ == DispositionType.CONVICTED:
+                    twenty_years_ago_date = datetime.today() - timedelta(days=(365*20)) #calculate time delta for twenty years ago #todo: calculate if this is accurate to within +-1 days
+                    try:
+                        if twenty_years_ago_date.date() < charge.disposition.date:
+                            return True
+                    except:
+                        logging.info('does_record_contain_arrest_or_conviction_in_last_20_years got a blank charge.disposition.type_from ' + str(charge.name))
+
+        return False
+
+    def is_charge_more_than_1_year_old(self, charge):
+        one_year_ago_date = datetime.today() - timedelta(days=(365)) #calculate time delta for one year ago #todo: calculate if this is accurate to within +-1 days
+
+        if one_year_ago_date.date() < charge.disposition.date:
+            return True #todo: combine all these to return a == b
+        return False
+
+    def is_charge_dismissal_or_aquittal(charge):
+        if charge.disposition.type_== "DISMISSED" or charge.disposition.type_== "AQUITTED": #todo: i dont know if "AQUITTED" is a valid type
+            return True
+        return False
+
+    def is_charge_no_complaint(charge):
+        if charge.disposition.type_== "NO COMPLAINT": #todo: not sure if "NO COMPLAINT" is a valid type or if its even in this object
+            return True
+        return False
+
+    """
+        Run Type Eligibility analysis on a charge
+
+        Args:
+            charge: A Charge instance
+
+        Returns:
+            A Result instance
+        """
+
+    def type_eligibility(self, charge):
+        analysis = ""
+        #
+        # analysis.append(RecordAnalyzer.is_charge_felony_class_A(charge, 'FELONY', 'A'))
+        # if analysis[-1].result:
+        #     return ResultInElig_137_225_5(analysis=analysis)
+
+        # analysis.append(RecordAnalyzer._is_charge_sex_crime(charge))
+        # if analysis[-1].result:
+        #     return ResultInElig_137_225_5(analysis=analysis)
+        #
+        # analysis.append(RecordAnalyzer._is_charge_traffic_crime(charge))
+        # if analysis[-1].result:
+        #     return ResultInElig_137_225_5(analysis=analysis)
+
+        # analysis.append(RecordAnalyzer.is)
+
+        #todo: add the commented logging.info things to the result object for back tracing purposes
+
+
+        #type eligibility tree
+
+        if RecordAnalyzer.is_charge_felony_class_A(charge):
+            logging.info('felony class A')
+            return Result(ResultCode.INELIGIBLE, "Ineligible", "137.225(5)")
+
+        if RecordAnalyzer.is_crime_list_A(charge) == True:
+            logging.info('crime list A')
+            return Result(ResultCode.INELIGIBLE, "Ineligible", "137.225(5)")
+
+        if RecordAnalyzer.is_crime_driving_crime(charge) == True:
+            logging.info('crime list Driving')
+            return Result(ResultCode.INELIGIBLE, "Ineligible", "137.225(5)")
+
+        if RecordAnalyzer.is_crime_list_B(charge) == True:
+            logging.info('crime list b')
+            return Result(ResultCode.ELIGIBLE, "Further Analysis Needed", None)
+
+        if RecordAnalyzer.is_crime_marijuana_list(charge) == True:  #todo: this  one is broken and will never be true
+            logging.info('crime list marijuana')
+            return Result(ResultCode.INELIGIBLE, "Marijuana Ineligible", "") #todo: find out waht this is
+
+        #positive eligibilty tree
+
+        if RecordAnalyzer.is_charge_PCS_schedule_1(charge) == True:
+            logging.info('pcs 1')
+            return Result(ResultCode.ELIGIBLE, "Eligible", "137.225(5)")
+
+        if RecordAnalyzer.is_charge_traffic_violation(charge) == True:
+            logging.info('traffic violation')
+            return Result(ResultCode.INELIGIBLE, "Ineligible", "137.225(5)")
+
+        if RecordAnalyzer.is_charge_level_violation(charge) == True:
+            logging.info('non traffic crime at level: violation')
+            return Result(ResultCode.ELIGIBLE, "Eligible", "137.225(5)(d)")
+
+        elif RecordAnalyzer.is_charge_misdemeanor(charge) == True:
+            logging.info('misdemeanor')
+            return Result(ResultCode.ELIGIBLE, "Eligible", "137.225(5)(b)")
+
+        elif RecordAnalyzer.is_charge_felony_class_C(charge) == True:
+            logging.info('felony class c')
+            return Result(ResultCode.ELIGIBLE, "Eligible", "137.225(5)(b)")
+
+        elif RecordAnalyzer.is_charge_felony_class_B(charge) == True:
+            if RecordAnalyzer.does_record_contain_arrest_or_conviction_in_last_20_years(self.client): #todo: this operation's results could maybe be pre computed and stored somewhere since this is kinda expensive, but maybe ill leave it since it rarely gets called.
+                logging.info('felony class B + conviction within 20 yrs')
+                return Result(ResultCode.INELIGIBLE, "Ineligible", "137.225(5)(a)(A)(i)")
+            else:
+                logging.info('felony class B + NO conviction within 20 yrs')
+                return Result(ResultCode.ELIGIBLE, "Further Analysis Needed", None)
+
+        elif RecordAnalyzer.is_charge_dismissal_or_aquittal(charge) == True:
+            logging.info('aquitted or dismissed')
+            return Result(ResultCode.ELIGIBLE, "Eligible", "137.225(5)(b)")
+
+        elif RecordAnalyzer.is_charge_no_complaint(charge) == True: #todo: no complaint is not behaving properly
+            if RecordAnalyzer.is_charge_more_than_1_year_old(charge) == True:
+                logging.info('charge is no_complaint + older than 1 year')
+                return Result(ResultCode.ELIGIBLE, "Eligible", "137.225(5)(b)")
+
+        elif RecordAnalyzer.is_charge_no_complaint(charge) == False:
+            logging.info('no complaint')
+            return Result(ResultCode.ELIGIBLE, "Further Analysis Needed", None)
+        else:
+            print("this has somehow escaped the flow chart") #todo should this should throw an error?
+
+
+
