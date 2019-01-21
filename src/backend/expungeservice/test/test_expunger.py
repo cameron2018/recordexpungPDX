@@ -17,31 +17,24 @@ def test_statute():
             assert(s1 == s2)
             assert(str(s1) == t[1])
         elif len(t[0]) == 3:
-            s1 = Statute(t[0][0], t[0][1], t[0][2])
+            s1 = Statute(t[0][0], t[0][1], t[0][2]) 
             s2 = copy.deepcopy(s1)
             assert(s1 == s2)
             assert(str(s1) == t[1])
         elif len(t[0]) == 2:
-            s1 = Statute(t[0][0], t[0][1])
+            s1 = Statute(t[0][0], t[0][1]) 
             s2 = copy.deepcopy(s1)
             assert(s1 == s2)
             assert(str(s1) == t[1])
         else:
             assert(0)
 
-# get disposition helper function
-def get_disp():
-    date = datetime.date(1996, 1, 1)
-    disp_type = DispositionType.NO_CONVICTION
-    return Disposition(disp_type, date)
 def get_convicted_disp():
     return Disposition(DispositionType.CONVICTED, datetime.date(1996, 1, 1))
 
 def get_dummy_statute():
     return Statute(113, 45, 5, 'd')
 
-
-#todo: add assertions to this
 def get_charge_crime_level(type_, class_):
     disp = get_convicted_disp()
     statute = get_dummy_statute()
