@@ -23,12 +23,12 @@ from objbrowser import browse
 class TestAnalyzerWithJdLitter(unittest.TestCase):
 
     def setUp(self):
+
         path = os.path.abspath(jd_litters.__file__)
         path = path.replace(os.path.relpath(path, "../../"), "")
-        PathToExampleHTMLFiles = os.path.join(path, 'tests/fixtures/html/jd-litter') + "/"
+        PathToExampleHTMLFiles = os.path.join(path, '/src/backend/tests/fixtures/html/jd-litter') + "/"
 
         self.client = BuildClientObject(PathToExampleHTMLFiles, Litter.RECORD)
-
         self.analyzer = RecordAnalyzer(self.client)  # create an analyzer object with our client object
 
         browse(self.client)
