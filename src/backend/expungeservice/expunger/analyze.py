@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 
+
+
+
 import collections
 import enum
 
@@ -113,6 +116,12 @@ class Charge(object):
     def type_elig_result(self, result):
         self._result = result
 
+
+
+        #todo: add 'expungeable' property
+
+        #todo: add expungable now t/f
+
 CaseState = enum.Enum('CaseState', 'OPEN CLOSED')
 
 class Case(object):
@@ -143,6 +152,8 @@ class Client(object):
         self.name = name
         self.dob = dob
         self.cases = cases
+
+
 
     def num_charges(self):
         num = 0
