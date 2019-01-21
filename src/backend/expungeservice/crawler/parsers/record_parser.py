@@ -1,6 +1,6 @@
 from html.parser import HTMLParser
 
-from expungeservice.models.case import Case
+from expungeservice.crawler.models.case import Case
 
 
 class RecordParser(HTMLParser):
