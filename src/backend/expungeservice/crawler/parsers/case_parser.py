@@ -2,7 +2,7 @@ import re
 
 from html.parser import HTMLParser
 
-from expungeservice.crawler.models.charge import Charge
+from expungeservice.models.charge import Charge
 
 
 class CaseParser(HTMLParser):

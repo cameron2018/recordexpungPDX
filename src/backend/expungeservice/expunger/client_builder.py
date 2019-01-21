@@ -53,7 +53,11 @@ def BuildClientObject(PathToExampleHTMLFiles, clientsRecordPageHTML):
         # set up case parser
         caseparser = CaseParser()
 
-        caseRawData = file2string(PathToExampleHTMLFiles + case.case_detail_link)
+
+        caseDetailURL = str(case.case_detail_link)
+        caseDetailURL= caseDetailURL.replace("https://publicaccess.courts.oregon.gov/PublicAccessLogin/", "")
+
+        caseRawData = file2string(PathToExampleHTMLFiles + caseDetailURL)
 
         caseparser.feed(caseRawData)
 
