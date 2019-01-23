@@ -260,8 +260,13 @@ class RecordAnalyzer(object):
             else:
                 return Result(ResultCode.NO_ACTION)
 
+
+    #todo: the comment below was written before the analyze method, and describes the way it should be
+    #           not the way it actually is. 
+
     """
-    Analyze which records are expungeable
+    
+    Analyze which records are expungeable 
 
     The method sets the Charge instance's result attribute with type eligibility
     analysis result.
@@ -282,7 +287,7 @@ class RecordAnalyzer(object):
 
             for charge in case.charges:
 
-                # #todo: move this to its own function since it is basically the
+                #todo: move this to its own function since it is basically the
                 #           type eligibilty function and time eligibility has its own function
 
                 if charge.statute.chapter == None: #todo: throw errror

@@ -132,3 +132,5 @@ venv.bak/
 
 # PyCharm editors
 .idea/
+
+testcrawl.py
